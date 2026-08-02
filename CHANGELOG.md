@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 — 2026-08-02
 
 - Initial release of `al_email_protect`, implementing the email obfuscation proposed in
   [alshedivat/al-folio#3540](https://github.com/alshedivat/al-folio/issues/3540) (source PR
