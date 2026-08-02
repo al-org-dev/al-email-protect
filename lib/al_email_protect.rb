@@ -14,7 +14,11 @@ require_relative "al_email_protect/version"
 # address is emitted as two halves and only rejoined in the browser.
 module AlEmailProtect
   PLUGIN_ROOT = File.expand_path("..", __dir__)
-  ASSETS_ROOT = File.join(PLUGIN_ROOT, "lib", "assets")
+  # Jekyll writes a StaticFile to <dest>/<dir>/<name>, where <dir> is relative
+  # to the base below. That base must be lib/, not the gem root, or assets land
+  # at /lib/assets/... while every tag in this file points at /assets/... .
+  LIB_ROOT = __dir__
+  ASSETS_ROOT = File.join(LIB_ROOT, "assets")
 
   class PluginStaticFile < Jekyll::StaticFile; end
 
@@ -64,6 +68,14 @@ module AlEmailProtect
     domain.split(".").map { |label| %(<span class="al-email-text">#{escape(label)}</span>) }.join(separator)
   end
 
+  # [relative_dir, filename] for everything this gem publishes. Exposed so the
+  # destination path can be asserted without booting a full Jekyll site.
+  def asset_entries
+    Dir.glob(File.join(ASSETS_ROOT, "**", "*")).sort.reject { |p| File.directory?(p) }.map do |source_path|
+      [File.dirname(source_path).sub("#{LIB_ROOT}/", ""), File.basename(source_path)]
+    end
+  end
+
   # Copies the runtime into the built site. Skipped entirely when the feature is
   # off, so a site that never enables it does not carry the asset.
   class AssetsGenerator < Jekyll::Generator
@@ -76,8 +88,8 @@ module AlEmailProtect
       Dir.glob(File.join(ASSETS_ROOT, "**", "*")).sort.each do |source_path|
         next if File.directory?(source_path)
 
-        relative_dir = File.dirname(source_path).sub("#{PLUGIN_ROOT}/", "")
-        site.static_files << PluginStaticFile.new(site, PLUGIN_ROOT, relative_dir, File.basename(source_path))
+        relative_dir = File.dirname(source_path).sub("#{LIB_ROOT}/", "")
+        site.static_files << PluginStaticFile.new(site, LIB_ROOT, relative_dir, File.basename(source_path))
       end
     end
   end

@@ -163,4 +163,26 @@ class EmailProtectTest < Minitest::Test
     refute_match(/(^|[^\w.])\$\(/, js)
     refute_includes js, "jQuery"
   end
+
+  # --- regression: assets must land where the tags point ------------------
+
+  def test_assets_are_published_under_slash_assets
+    # Jekyll writes a StaticFile to <dest>/<dir>/<name>. Basing it on the gem
+    # root instead of lib/ puts everything under /lib/assets/..., while every
+    # tag emits /assets/... — a 404 that only shows up in a real build.
+    entries = AlEmailProtect.asset_entries
+
+    refute_empty entries
+    entries.each do |relative_dir, name|
+      assert relative_dir.start_with?("assets/al_email_protect"),
+             "#{relative_dir}/#{name} would be published outside /assets/al_email_protect"
+      refute_includes relative_dir, "lib/"
+    end
+  end
+
+  def test_every_referenced_asset_is_actually_published
+    published = AlEmailProtect.asset_entries.map { |dir, name| "/#{dir}/#{name}" }
+
+    assert_includes published, "/assets/al_email_protect/js/email-protect.js"
+  end
 end
