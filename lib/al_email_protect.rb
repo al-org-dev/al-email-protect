@@ -148,11 +148,64 @@ module AlEmailProtect
   end
 
   # {{ cv.email | al_email_obfuscate }}
+  # Rewrites every `mailto:` anchor in a fragment of already-rendered HTML.
+  #
+  # This exists because the markup that needs protecting is frequently not ours.
+  # al-folio's social links come from the third-party `jekyll-socials` gem, which
+  # owns the whole block and emits `mailto:%s` for the email entry — there is no
+  # hook to render that one link differently. Capturing its output and rewriting
+  # it afterwards is the only interception point, and it works regardless of
+  # which gem produced the markup.
+  #
+  # Deliberately narrow: it matches an <a> whose href begins with `mailto:` and
+  # replaces the whole element. It does not attempt to parse HTML generally.
+  ANCHOR = %r{<a\b([^>]*?)href=(["'])mailto:([^"']+)\2([^>]*)>(.*?)</a>}im.freeze
+
+  # `mailto:` targets are commonly percent-encoded (jekyll-email-protect's
+  # `encode_email` does exactly that), so decode before splitting or the local
+  # and domain halves come out as escape sequences.
+  def decode_target(value)
+    CGI.unescape(value.to_s.split("?").first.to_s)
+  rescue StandardError
+    value.to_s
+  end
+
+  def rewrite_html(html)
+    html.to_s.gsub(ANCHOR) do
+      before = Regexp.last_match(1)
+      after = Regexp.last_match(4)
+      address = decode_target(Regexp.last_match(3))
+      label = Regexp.last_match(5)
+      parts = split_address(address)
+
+      # Leave anything that is not a usable address exactly as it was; a
+      # half-rewritten contact link is worse than an unprotected one.
+      next Regexp.last_match(0) unless parts
+
+      local, domain = parts
+      attributes = "#{before}#{after}".gsub(/\s+/, " ").strip
+      # The visible text often *is* the address. Replace it with the split
+      # rendering, or the plaintext survives in the markup and the rewrite
+      # achieves nothing.
+      inner = label.to_s.include?("@") ? "#{escape(local)}<span class=\"al-email-sep\"> [at] </span>#{domain_markup(domain)}" : label
+
+      %(<a href="#" class="al-email-protect #{attributes}" data-eu="#{escape(local)}" data-ed="#{escape(domain)}">#{inner}</a>)
+    end
+  end
+
   module Filters
     def al_email_obfuscate(value)
       return value.to_s unless AlEmailProtect.enabled?(@context.registers[:site])
 
       AlEmailProtect.obfuscate_text(value)
+    end
+
+    # `{{ captured_html | al_email_protect_html }}` — a pass-through when the
+    # feature is off, so callers can pipe unconditionally.
+    def al_email_protect_html(value)
+      return value.to_s unless AlEmailProtect.enabled?(@context.registers[:site])
+
+      AlEmailProtect.rewrite_html(value)
     end
   end
 end
