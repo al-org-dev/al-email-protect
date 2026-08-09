@@ -185,4 +185,62 @@ class EmailProtectTest < Minitest::Test
 
     assert_includes published, "/assets/al_email_protect/js/email-protect.js"
   end
+
+  # --- rewriting third-party HTML -----------------------------------------
+
+  def test_rewrites_a_mailto_anchor_produced_by_another_gem
+    # jekyll-socials emits this shape; al-folio has no hook to render just the
+    # email entry differently, so the block is captured and rewritten after.
+    html = %(<a href="mailto:someone@example.com" title="email"><i class="fa fa-envelope"></i></a>)
+    out = render("{{ input | al_email_protect_html }}", site: enabled_site, assigns: { "input" => html })
+
+    refute_includes out, "mailto:"
+    refute_includes out, "someone@example.com"
+    assert_includes out, 'data-eu="someone"'
+    assert_includes out, 'data-ed="example.com"'
+    # Icons and other children must survive.
+    assert_includes out, "fa-envelope"
+  end
+
+  def test_decodes_percent_encoded_targets
+    # jekyll-email-protect's `encode_email` percent-encodes the address, so the
+    # href is escaped. Splitting without decoding yields escape sequences.
+    html = %(<a href="mailto:%73%6F%6D%65@%65%78%2E%63%6F%6D">mail</a>)
+    out = render("{{ input | al_email_protect_html }}", site: enabled_site, assigns: { "input" => html })
+
+    assert_includes out, 'data-eu="some"'
+    assert_includes out, 'data-ed="ex.com"'
+  end
+
+  def test_replaces_visible_address_text
+    # If the label is the address itself, leaving it renders the rewrite
+    # pointless — the plaintext would still be sitting in the markup.
+    html = %(<a href="mailto:someone@example.com">someone@example.com</a>)
+    out = render("{{ input | al_email_protect_html }}", site: enabled_site, assigns: { "input" => html })
+
+    refute_includes out, "someone@example.com"
+    assert_includes out, " [at] "
+  end
+
+  def test_leaves_non_mailto_links_untouched
+    html = %(<a href="https://github.com/x">gh</a><a href="mailto:a@b.com">m</a>)
+    out = render("{{ input | al_email_protect_html }}", site: enabled_site, assigns: { "input" => html })
+
+    assert_includes out, 'href="https://github.com/x"'
+    refute_includes out, "mailto:"
+  end
+
+  def test_leaves_unusable_addresses_untouched
+    html = %(<a href="mailto:someone@localhost">m</a>)
+    out = render("{{ input | al_email_protect_html }}", site: enabled_site, assigns: { "input" => html })
+
+    assert_includes out, "mailto:someone@localhost"
+  end
+
+  def test_is_a_pass_through_when_disabled
+    html = %(<a href="mailto:someone@example.com">m</a>)
+    out = render("{{ input | al_email_protect_html }}", site: disabled_site, assigns: { "input" => html })
+
+    assert_includes out, "mailto:someone@example.com"
+  end
 end
